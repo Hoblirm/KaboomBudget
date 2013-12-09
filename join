@@ -1,0 +1,171 @@
+#!/usr/bin/env ruby
+
+require 'roo'
+require 'simple_xlsx'
+require 'fileutils'
+require 'logger'
+require 'date'
+
+FILE1 = "#{File.dirname(__FILE__)}/Purchases.xlsx"
+FILE2 = "#{File.dirname(__FILE__)}/KaBOOM.xlsx"
+OUTPUT = "#{File.dirname(__FILE__)}/joined.xlsx"
+LOG = "#{File.dirname(__FILE__)}/join_log.txt"
+
+##
+# Create a new log file.
+FileUtils.rm_rf("#{LOG}")
+logger = Logger.new(LOG)
+
+##
+# This method will open either a xls or xlsx spreadsheet and
+# return an object reference.
+def open_spreadsheet(file_path)
+  if file_path.end_with? ".xlsx"
+    Roo::Excelx.new(file_path)
+  else
+    Roo::Excel.new(file_path)
+  end
+end
+
+##
+# Check and see if a sheet was previously generated.  If so, then open the
+# sheet and store the existing categories.  This will allow the old transactions
+# to maintain their category information on successive generations.
+existing_categories = {}
+empty_count = 0
+if File.exists?(OUTPUT)
+  sheet = open_spreadsheet(OUTPUT)
+  header = sheet.row(1)
+  (2..sheet.last_row).each do |i|
+    row = Hash[[header, sheet.row(i)].transpose]
+    # Determine if the PR column is empty.  If it is, the row can be skipped.
+    if (row['PR'].nil? || row['PR'].empty?)
+      empty_count+=1
+    else
+      empty_count=0
+      existing_categories[row['PR']] ||= row['Category']
+    end
+    break if empty_count > 10
+  end
+end
+
+##
+# Open the credit spreadsheet and collect the information in pr_hash.  This will
+# allow the rows to be referenced by their PR #.
+pr_hash = {}
+sheet = open_spreadsheet(FILE1)
+header = sheet.row(2)
+header[2]= 'PR Vendor'
+empty_count = 0 
+(3..sheet.last_row).each do |i|  
+  row = Hash[[header, sheet.row(i)].transpose]
+
+  # Determine if the Cost column is empty.  If it is, the row can be skipped.
+  if (row['Cost'].nil?)
+    empty_count+=1
+  else
+    empty_count=0
+    pr_hash[row['Control #'].to_s.chomp(".0")] = [row,false]
+    row.delete 'Control #'
+    row.delete 'Cost'
+    row.delete 'Balance'
+  end
+  # Stop reading the sheet once 10 or more empty rows are encountered.
+  break if empty_count > 10
+end 
+
+##
+# Go through the second spreadsheet that contains all the transactions. Attempt
+# to join the data stored in pr_hash if a matching PR is found.
+internal_trans_sum = {}
+transactions =[]
+sheet = open_spreadsheet(FILE2) 
+header = sheet.row(2)
+header[2] = 'WBS Owner'
+header[5] = 'Vendor Name'
+header[7] = 'PR Description'
+empty_count=0
+(3..sheet.last_row).each do |i|
+  # Category column must be added since it doesn't exist in the imported sheets.
+  row = {'Category' => ''}
+  row.merge! Hash[[header, sheet.row(i)].transpose]
+
+  # Determine if the PR column is empty.  If it is, the row can be skipped.
+  if (row['PR'].nil? || row['PR'].to_s.empty? || row['PR'] == 'Result')
+    empty_count+=1
+  else
+    empty_count=0
+
+    # Attempt to assign the category column to a previously assigned value.
+    row['Category'] = existing_categories[row['PR']]
+
+    # Translate the Fiscal Year column into a Date object.
+    begin
+      row['Period/Fiscal Year'] = Date.parse(row['Period/Fiscal Year'])
+    rescue ArgumentError
+      logger.error "Row #{i} failed to translate date: #{row['Period/Fiscal Year']}"
+    end
+
+    # Determine if the PR # matches data from the Credit sheet.
+    if pr_hash[row['PR']].nil?
+      # PR doesn't match, just include existing row.
+      transactions << row
+    else
+      # PR matches, join the columns from the other sheet.
+      row.merge! pr_hash[row['PR']].first
+      pr_hash[row['PR']][1] = true
+      transactions << row
+    end #if PR hash
+
+    # Attempt to sum up all internal transactions.  These are identified
+    # with a vendor of '#'.  They will be grouped by WBS and PR.
+    if row['WBS Element'].nil? || row['WBS Element'].empty?
+      logger.error "Row #{i} with PR '#{row['PR']}' has an undefined WBS Element."
+    else
+      if row['Vendor'].start_with?("#")
+        key = "#{row['WBS Element']}_#{row['PR']}"
+        if internal_trans_sum.key? key
+          internal_trans_sum[key] += row['Commitment']
+        else
+          internal_trans_sum[key] = row['Commitment'].to_f
+        end
+      end
+    end # if WBS element
+
+  end #if PR
+  # Stop reading the sheet once 10 or more empty rows are encountered.
+  break if (empty_count > 10)
+end #each row
+
+##
+# Go through the transactions and remove all the internal transactions that
+# add up to zero.
+transactions.select! do |row|
+  (!row['Vendor'].start_with?("#") ||
+      (internal_trans_sum["#{row['WBS Element']}_#{row['PR']}"] != 0))
+end
+
+##
+# Report any PR in the Credit sheet that did not get matched to a transaction.
+pr_hash.each do |key,value|
+  logger.warn "PR '#{key}' has no matching transaction." unless value.last
+end
+
+##
+# Now that all the data is collected in memory, we can generate the xlsx sheet.
+FileUtils.rm_rf("#{OUTPUT}")
+SimpleXlsx::Serializer.new(OUTPUT) do |doc|
+  header = ['Category','Fund','WBS Element','WBS Owner','Commitment Item',
+    'Vendor','Vendor Name','PR','PR Description','Period/Fiscal Year',
+    'Fiscal Year','Commitment','Obligation','Cost','Customer','PR Vendor',
+    'Submit',"Rec'd",'IT','Description','OP Rep']
+  doc.add_sheet("Transactions") do |sheet|
+    sheet.add_row(header)
+    transactions.each do |row_attrs|
+      row = header.map{ |attr| row_attrs[attr] }
+      sheet.add_row(row)
+    end
+  end
+
+end
+

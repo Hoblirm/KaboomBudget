@@ -1,0 +1,156 @@
+#!/usr/bin/env ruby
+
+require 'roo'
+require 'simple_xlsx'
+require 'fileutils'
+require 'logger'
+require 'date'
+
+INPUT = "#{File.dirname(__FILE__)}/joined.xlsx"
+FUND_BOOK = "#{File.dirname(__FILE__)}/Funds.xlsx"
+OUTPUT = "#{File.dirname(__FILE__)}/rolled.xlsx"
+LOG = "#{File.dirname(__FILE__)}/roll_log.txt"
+
+FUND_MAP = {'582622' => 'SMD',
+  '439432' => 'SCaN',
+  '428658' => 'AES' }
+
+##
+# Create a new log file.
+FileUtils.rm_rf("#{LOG}")
+logger = Logger.new(LOG)
+
+##
+# This method will open either a xls or xlsx spreadsheet and
+# return an object reference.
+def open_spreadsheet(file_path)
+  if file_path.end_with? ".xlsx"
+    Roo::Excelx.new(file_path)
+  else
+    Roo::Excel.new(file_path)
+  end
+end
+
+##
+# Open the spreadsheet that had previously been joined.  It is assumed that the
+# sheet had been populated with category information.  This will group all
+# transactions by WBS and category (itemized transaction).  The commitments,
+# obligations, and costs with be summed up for each itemized transaction.
+itemized_trans = {}
+sheet = open_spreadsheet(INPUT) 
+header = sheet.row(1)
+empty_count=0
+(2..sheet.last_row).each do |i|
+  row = Hash[[header, sheet.row(i)].transpose]
+
+  # If the PR column is not set, the row can be skipped.
+  if (row['PR'].nil? || row['PR'].empty?)
+    empty_count+=1
+  else
+    empty_count=0
+
+    # The roo library reads in Dates as floats.  The Fiscal Year column must
+    # be converted back from a float to a Date object.
+    row['Period/Fiscal Year']=(Date.new(1899,12,30) + row['Period/Fiscal Year'].to_f)
+
+    # The WBS column must be set to allow the row to be grouped.
+    if row['WBS Element'].nil? || row['WBS Element'].empty?
+      logger.error "Row #{i} with PR '#{row['PR']}' has an undefined WBS Element."
+    else
+
+      # Translate the WBS to only contain the first three octets. This is the
+      # value used to group transactions.
+      if (three_octets = row['WBS Element'].match(/^\d+\.\d+\.\d+/))
+        row['WBS Element'] = three_octets[0]
+      else
+        logger.error "Row #{i} has invalid WBS Element: #{row['WBS Element']}"
+      end
+
+      # The category column must be set to all the row to be grouped.
+      if row['Category'].nil? || row['Category'].empty?
+        logger.error "Row #{i} with PR '#{row['PR']}' has an undefined category"
+      else
+
+        # Generate the itemized transaction key which is the WBS and Category
+        # combined.
+        key = "#{row['WBS Element']}_#{row['Category']}"
+
+        # Determine if the itemized transaction has already been created.
+        if itemized_trans.key? key
+          # Add up the three budget columns.
+          ['Commitment' ,'Obligation', 'Cost'].each do |column|
+            itemized_trans[key][column] += row[column]
+          end
+
+          # Set the Fiscal Year column if the transaction has a later date. This
+          # will ensure that the itemized transaction has the latest date.
+          if (row['Period/Fiscal Year'] > itemized_trans[key]['Period/Fiscal Year'])
+            itemized_trans[key]['Period/Fiscal Year'] = row['Period/Fiscal Year']
+          end
+        else
+          # If a new itemized transaction is being added, create the Fund Pool
+          # column by looking it up in the FUND_MAP hash.
+          new_row = {'Fund Pool' => FUND_MAP[row['WBS Element'].split('.').first]}.merge row
+          itemized_trans[key] = new_row
+        end
+
+        # Remove all transaction columns that do not need to be rolled up.
+        ['WBS Owner', 'Commitment Item', 'Vendor', 'Vendor Name', 'PR', 
+          'PR Description','Fiscal Year', 'Customer', 'PR Vendor', 'Submit',
+          "Rec'd", 'IT', 'Description', 'OP Rep'].each do |column|
+          itemized_trans[key].delete(column)
+        end
+
+      end
+    end #if WBS Element
+  end #if PR
+  break if (empty_count > 10)
+end #each row
+
+##
+# Read the data in the Fund spreadsheet and add the allocations to the list
+# of itemized transactions.
+fund_allocs = []
+sheet = open_spreadsheet(FUND_BOOK)
+header = sheet.row(1)
+empty_count=0
+(2..sheet.last_row).each do |i|
+  row = Hash[[header, sheet.row(i)].transpose]
+  if (row['Fund'].nil? || row['Fund'].empty?)
+    empty_count+=1
+  else
+    empty_count=0
+    fund_allocs << {'Category' => 'Fund Allocation',
+      'Fund Pool' => row['Fund'],
+      'Period/Fiscal Year'=> row['Date'],
+      'Commitment' => -row['Amount']}
+  end
+  break if (empty_count > 10)
+end
+itemized_trans = itemized_trans.values.concat fund_allocs
+
+##
+# Sort the itemized transactions by date and calculate the uncommitted funds.
+uncommitted_funds = {}
+itemized_trans.sort!{|x,y| x['Period/Fiscal Year'] <=> y['Period/Fiscal Year']}
+itemized_trans.each do |row|
+  uncommitted_funds[row['Fund Pool']] ||= 0
+  uncommitted_funds[row['Fund Pool']] -= row['Commitment']
+  row['Uncommitted'] = uncommitted_funds[row['Fund Pool']]
+end
+
+##
+# Now that all the data is collected in memory, we can generate the xlsx sheet.
+FileUtils.rm_rf("#{OUTPUT}")
+SimpleXlsx::Serializer.new(OUTPUT) do |doc|
+  header = ['Fund Pool','Category','Fund','WBS Element','Period/Fiscal Year',
+    'Commitment','Uncommitted','Obligation','Cost']
+  doc.add_sheet("Itemized Transactions") do |sheet|
+    sheet.add_row(header)
+    itemized_trans.each do |row_attrs|
+      row = header.map{ |attr| row_attrs[attr] }
+      sheet.add_row(row)
+    end
+  end
+end
+
