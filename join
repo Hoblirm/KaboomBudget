@@ -38,6 +38,11 @@ if File.exists?(OUTPUT)
   header = sheet.row(1)
   (2..sheet.last_row).each do |i|
     row = Hash[[header, sheet.row(i)].transpose]
+
+    # Set default values for columns
+    row['PR'] = row['PR'].to_s
+    row['PR'].chomp!(".0")
+
     # Determine if the PR column is empty.  If it is, the row can be skipped.
     if (row['PR'].nil? || row['PR'].empty?)
       empty_count+=1
@@ -54,18 +59,23 @@ end
 # allow the rows to be referenced by their PR #.
 pr_hash = {}
 sheet = open_spreadsheet(FILE1)
+sheet.default_sheet = 'Seibert (KABOOM)'
 header = sheet.row(2)
 header[2]= 'PR Vendor'
 empty_count = 0 
 (3..sheet.last_row).each do |i|  
   row = Hash[[header, sheet.row(i)].transpose]
 
+  # Set default values for columns
+  row['Control #'] = row['Control #'].to_s
+  row['Control #'].chomp!(".0")
+
   # Determine if the Cost column is empty.  If it is, the row can be skipped.
   if (row['Cost'].nil?)
     empty_count+=1
   else
     empty_count=0
-    pr_hash[row['Control #'].to_s.chomp(".0")] = [row,false]
+    pr_hash[row['Control #']] = [row,false]
     row.delete 'Control #'
     row.delete 'Cost'
     row.delete 'Balance'
@@ -82,13 +92,17 @@ transactions =[]
 sheet = open_spreadsheet(FILE2) 
 header = sheet.row(2)
 header[2] = 'WBS Owner'
-header[5] = 'Vendor Name'
-header[7] = 'PR Description'
+header[4] = 'Vendor Name'
+header[6] = 'PR Description'
 empty_count=0
 (3..sheet.last_row).each do |i|
   # Category column must be added since it doesn't exist in the imported sheets.
   row = {'Category' => ''}
   row.merge! Hash[[header, sheet.row(i)].transpose]
+
+  # Set default values for columns
+  row['PR'] = row['PR'].to_s
+  row['PR'].chomp!(".0")
 
   # Determine if the PR column is empty.  If it is, the row can be skipped.
   if (row['PR'].nil? || row['PR'].to_s.empty? || row['PR'] == 'Result')
@@ -101,8 +115,12 @@ empty_count=0
 
     # Translate the Fiscal Year column into a Date object.
     begin
-      row['Period/Fiscal Year'] = Date.parse(row['Period/Fiscal Year'])
-    rescue ArgumentError
+      if row['Period/Fiscal Year'].is_a? Date 
+        row['Period/Fiscal Year'] += 1286 
+      elsif row['Period/Fiscal Year'].is_a? String
+        row['Period/Fiscal Year'] = Date.parse(row['Period/Fiscal Year'])
+      end
+    rescue 
       logger.error "Row #{i} failed to translate date: #{row['Period/Fiscal Year']}"
     end
 
@@ -122,7 +140,7 @@ empty_count=0
     if row['WBS Element'].nil? || row['WBS Element'].empty?
       logger.error "Row #{i} with PR '#{row['PR']}' has an undefined WBS Element."
     else
-      if row['Vendor'].start_with?("#")
+      if row['Vendor'].to_s.start_with?("#")
         key = "#{row['WBS Element']}_#{row['PR']}"
         if internal_trans_sum.key? key
           internal_trans_sum[key] += row['Commitment']
@@ -141,7 +159,7 @@ end #each row
 # Go through the transactions and remove all the internal transactions that
 # add up to zero.
 transactions.select! do |row|
-  (!row['Vendor'].start_with?("#") ||
+  (!row['Vendor'].to_s.start_with?("#") ||
       (internal_trans_sum["#{row['WBS Element']}_#{row['PR']}"] != 0))
 end
 
