@@ -115,9 +115,7 @@ empty_count=0
 
     # Translate the Fiscal Year column into a Date object.
     begin
-      if row['Period/Fiscal Year'].is_a? Date 
-        row['Period/Fiscal Year'] += 1286 
-      elsif row['Period/Fiscal Year'].is_a? String
+      if row['Period/Fiscal Year'].is_a? String
         row['Period/Fiscal Year'] = Date.parse(row['Period/Fiscal Year'])
       end
     rescue 
