@@ -143,7 +143,7 @@ empty_count=0
       if row['Vendor'].to_s.start_with?("#")
         key = "#{row['WBS Element']}_#{row['PR']}"
         if internal_trans_sum.key? key
-          internal_trans_sum[key] += row['Commitment']
+          internal_trans_sum[key] += row['Commitment'].to_f
         else
           internal_trans_sum[key] = row['Commitment'].to_f
         end
@@ -161,6 +161,13 @@ end #each row
 transactions.select! do |row|
   (!row['Vendor'].to_s.start_with?("#") ||
       (internal_trans_sum["#{row['WBS Element']}_#{row['PR']}"] != 0))
+end
+
+##
+# Go through the transactions and remove all the rows with a # for PR
+# and have no value for the Commitment.
+transactions.select! do |row|
+  (!row['PR'].to_s.start_with?("#") || (row['Commitment'].to_f != 0))
 end
 
 ##
