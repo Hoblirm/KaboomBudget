@@ -51,7 +51,9 @@ empty_count=0
 
     # The roo library reads in Dates as floats.  The Fiscal Year column must
     # be converted back from a float to a Date object.
-    row['Period/Fiscal Year']=(Date.new(1899,12,30) + row['Period/Fiscal Year'].to_f)
+    unless row['Period/Fiscal Year'].is_a? Date
+       row['Period/Fiscal Year']=(Date.new(1899,12,30) + row['Period/Fiscal Year'].to_f)
+    end
 
     # The WBS column must be set to allow the row to be grouped.
     if row['WBS Element'].nil? || row['WBS Element'].empty?
