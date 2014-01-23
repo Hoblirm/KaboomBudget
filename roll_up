@@ -13,7 +13,7 @@ LOG = "#{File.dirname(__FILE__)}/roll_log.txt"
 
 FUND_MAP = {'582622' => 'SMD',
   '439432' => 'SCaN',
-  '428658' => 'AES'
+  '428658' => 'AES',
   '583749' => 'GSDO' }
 
 ##
