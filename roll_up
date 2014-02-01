@@ -176,9 +176,15 @@ SimpleXlsx::Serializer.new(OUTPUT) do |doc|
   header = ['Fund Pool', 'Total Received', 'Uncommitted']
   doc.add_sheet("Balance Summary") do |sheet|
     sheet.add_row(header)
+    total_received = 0
+    total_uncommitted = 0
     uncommitted_funds.keys.each do |pool|
       sheet.add_row([pool,funds_received[pool],uncommitted_funds[pool]])
+      total_received += funds_received[pool]
+      total_uncommitted += uncommitted_funds[pool]
     end
+    sheet.add_row([''])
+    sheet.add_row(['TOTAL',total_received,total_uncommitted])
   end
 
 end
