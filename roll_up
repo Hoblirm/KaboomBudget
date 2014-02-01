@@ -143,7 +143,7 @@ itemized_trans.sort!{|x,y| x['Period/Fiscal Year'] <=> y['Period/Fiscal Year']}
 itemized_trans.each do |row|
 
   # Convert AES to OS1. This is only applied for the rolled spreadsheet.
-  row['Fund Pool'] = 'OS1' if row['Fund Pool'] == 'AES'
+  #row['Fund Pool'] = 'OS1' if row['Fund Pool'] == 'AES'
 
   # Sum the received funds if this is a recieved fund.
   if (row['Category'] == 'Funds Received')
