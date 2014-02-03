@@ -79,7 +79,7 @@ empty_count=0
         key = "#{row['WBS Element']}_#{row['Category']}"
 
         # We want the commitments to show up as negative in the rolled spreadsheet.
-        itemized_trans[key]['Commitment'] *= -1
+        row['Commitment'] *= -1
 
         # Determine if the itemized transaction has already been created.
         if itemized_trans.key? key
