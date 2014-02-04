@@ -129,7 +129,7 @@ empty_count=0
     fund_allocs << {'Category' => 'Funds Received',
       'Fund Pool' => row['Fund'],
       'Period/Fiscal Year'=> row['Date'],
-      'Commitment' => row['Amount']}
+      'Commitment' => -row['Amount']}
   end
   break if (empty_count > 10)
 end
@@ -148,12 +148,12 @@ itemized_trans.each do |row|
   # Sum the received funds if this is a recieved fund.
   if (row['Category'] == 'Funds Received')
     funds_received[row['Fund Pool']] ||= 0
-    funds_received[row['Fund Pool']] += row['Commitment']
+    funds_received[row['Fund Pool']] -= row['Commitment']
   end
 
   # Sum the uncommitted funds for this itemized transaction.
   uncommitted_funds[row['Fund Pool']] ||= 0
-  uncommitted_funds[row['Fund Pool']] += row['Commitment']
+  uncommitted_funds[row['Fund Pool']] -= row['Commitment']
 
   # Set the transaction's uncommited funds based on the current balance
   row['Uncommitted'] = uncommitted_funds[row['Fund Pool']]
