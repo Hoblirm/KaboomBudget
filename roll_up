@@ -11,11 +11,6 @@ FUND_BOOK = "#{File.dirname(__FILE__)}/Funds.xlsx"
 OUTPUT = "#{File.dirname(__FILE__)}/rolled.xlsx"
 LOG = "#{File.dirname(__FILE__)}/roll_log.txt"
 
-FUND_MAP = {'582622' => 'SMD',
-  '439432' => 'SCaN',
-  '428658' => 'AES',
-  '583749' => 'GSDO' }
-
 ##
 # Create a new log file.
 FileUtils.rm_rf("#{LOG}")
@@ -94,10 +89,8 @@ empty_count=0
             itemized_trans[key]['Period/Fiscal Year'] = row['Period/Fiscal Year']
           end
         else
-          # If a new itemized transaction is being added, create the Fund Pool
-          # column by looking it up in the FUND_MAP hash.
-          new_row = {'Fund Pool' => FUND_MAP[row['WBS Element'].split('.').first]}.merge row
-          itemized_trans[key] = new_row
+          # A new itemized transaction is being added.
+          itemized_trans[key] = row
         end
 
         # Remove all transaction columns that do not need to be rolled up.

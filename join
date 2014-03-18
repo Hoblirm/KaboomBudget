@@ -11,6 +11,11 @@ FILE2 = "#{File.dirname(__FILE__)}/KaBOOM.xlsx"
 OUTPUT = "#{File.dirname(__FILE__)}/joined.xlsx"
 LOG = "#{File.dirname(__FILE__)}/join_log.txt"
 
+FUND_MAP = {'582622' => 'SMD',
+  '439432' => 'SCaN',
+  '428658' => 'AES',
+  '583749' => 'GSDO' }
+
 ##
 # Create a new log file.
 FileUtils.rm_rf("#{LOG}")
@@ -133,11 +138,13 @@ empty_count=0
       transactions << row
     end #if PR hash
 
-    # Attempt to sum up all internal transactions.  These are identified
-    # with a vendor of '#'.  They will be grouped by WBS and PR.
+    # Ensure the WBS Element is set before apply the next translations.
     if row['WBS Element'].nil? || row['WBS Element'].empty?
       logger.error "Row #{i} with PR '#{row['PR']}' has an undefined WBS Element."
     else
+      
+      # Attempt to sum up all internal transactions.  These are identified
+      # with a vendor of '#'.  They will be grouped by WBS and PR.
       if row['Vendor'].to_s.start_with?("#")
         key = "#{row['WBS Element']}_#{row['PR']}"
         if internal_trans_sum.key? key
@@ -146,6 +153,10 @@ empty_count=0
           internal_trans_sum[key] = row['Commitment'].to_f
         end
       end
+
+      # Add the Fund Pool column to the spreadsheet.
+      row['Fund Pool'] = FUND_MAP[row['WBS Element'].split('.').first]
+
     end # if WBS element
 
   end #if PR
@@ -178,7 +189,7 @@ end
 # Now that all the data is collected in memory, we can generate the xlsx sheet.
 FileUtils.rm_rf("#{OUTPUT}")
 SimpleXlsx::Serializer.new(OUTPUT) do |doc|
-  header = ['Category','Fund','WBS Element','WBS Owner','Commitment Item',
+  header = ['Fund Pool', 'Category','Fund','WBS Element','WBS Owner','Commitment Item',
     'Vendor','Vendor Name','PR','PR Description','Period/Fiscal Year',
     'Fiscal Year','Commitment','Obligation','Cost','Customer','PR Vendor',
     'Submit',"Rec'd",'IT','Description','OP Rep']
