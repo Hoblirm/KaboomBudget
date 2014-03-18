@@ -71,7 +71,7 @@ empty_count=0
 
         # Generate the itemized transaction key which is the WBS and Category
         # combined.
-        key = "#{row['WBS Element']}_#{row['Category']}"
+        key = "#{row['Fund Pool']}_#{row['Category']}"
 
         # We want the commitments to show up as negative in the rolled spreadsheet.
         #row['Commitment'] *= -1
