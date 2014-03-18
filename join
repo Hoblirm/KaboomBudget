@@ -36,7 +36,7 @@ end
 # Check and see if a sheet was previously generated.  If so, then open the
 # sheet and store the existing categories.  This will allow the old transactions
 # to maintain their category information on successive generations.
-existing_categories = {}
+existing_data = {}
 empty_count = 0
 if File.exists?(OUTPUT)
   sheet = open_spreadsheet(OUTPUT)
@@ -53,7 +53,7 @@ if File.exists?(OUTPUT)
       empty_count+=1
     else
       empty_count=0
-      existing_categories[row['PR']] ||= row['Category']
+      existing_data[row['PR']] ||= {'Category' => row['Category'], 'Fund Pool' => row['Fund Pool']}
     end
     break if empty_count > 10
   end
@@ -115,8 +115,11 @@ empty_count=0
   else
     empty_count=0
 
+    # Get the previous data that was read from the previous spreadsheet.
+    prev_data = existing_data[row['PR']]
+
     # Attempt to assign the category column to a previously assigned value.
-    row['Category'] = existing_categories[row['PR']]
+    row['Category'] = prev_data['Category'] if prev_data
 
     # Translate the Fiscal Year column into a Date object.
     begin
@@ -155,7 +158,11 @@ empty_count=0
       end
 
       # Add the Fund Pool column to the spreadsheet.
-      row['Fund Pool'] = FUND_MAP[row['WBS Element'].split('.').first]
+      if !prev_data || prev_data['Fund Pool'].nil? || prev_data['Fund Pool'].to_s == ''
+        row['Fund Pool'] = FUND_MAP[row['WBS Element'].split('.').first]
+      else
+	row['Fund Pool'] = prev_data['Fund Pool']
+      end
 
     end # if WBS element
 
@@ -189,7 +196,7 @@ end
 # Now that all the data is collected in memory, we can generate the xlsx sheet.
 FileUtils.rm_rf("#{OUTPUT}")
 SimpleXlsx::Serializer.new(OUTPUT) do |doc|
-  header = ['Fund Pool', 'Category','Fund','WBS Element','WBS Owner','Commitment Item',
+  header = ['Category','Fund Pool','Fund','WBS Element','WBS Owner','Commitment Item',
     'Vendor','Vendor Name','PR','PR Description','Period/Fiscal Year',
     'Fiscal Year','Commitment','Obligation','Cost','Customer','PR Vendor',
     'Submit',"Rec'd",'IT','Description','OP Rep']
